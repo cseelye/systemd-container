@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euETo pipefail
+shopt -s inherit_errexit
+
+source "${1}"
+
+IMAGE_NAME=${IMAGE_NAME:-}
+APP_NAME=${APP_NAME:-${IMAGE_NAME%%:*}}
+TAG=${TAG:-}
+ARG=${ARG:-}
+CMD=${CMD:-}
+
+# Make sure we are root/sudo or re-exec if not
+[[ "$UID" -eq 0 ]] || exec sudo "$0" "$@"
+
+# If no tag was specified, look for "latest" image and then look for the most recent version image
+if [[ -z ${TAG} ]]; then
+    if docker image ls --format='{{.Tag}}' ${IMAGE_NAME} | grep -q latest; then
+        TAG=latest
+    else
+        TAG=$(docker image ls --format='{{.Tag}}' ${IMAGE_NAME} | sort | tail -n 1)
+    fi
+fi
+
+# Remove any old container if it is present
+if docker container inspect ${APP_NAME} &>/dev/null; then
+    docker container rm --force ${APP_NAME}
+fi
+
+function watchdog()
+{
+    sleep 1
+    while true; do
+        status=$(docker container inspect --format='{{json .State.Health.Status }}' ${APP_NAME} | tr -d '"' || true)
+        if [[ -n ${status} &&
+              ${status} != "starting" && ${status} != "healthy" ]]; then
+            # container healthcheck has failed so stop the container and let the service manager restart it
+            echo "Healthcheck failed, killing ${APP_NAME} container"
+            docker container inspect --format='{{json .State.Health }}' ${APP_NAME} # Echo the healthcheck status for the log
+            docker container rm --force ${APP_NAME}
+            exit 1
+        fi
+        sleep 30
+    done
+}
+
+function stop_watchdog()
+{
+    local wd_pid=${1-}
+    if [[ -n "${wd_pid}" ]]; then
+        kill ${wd_pid} || true
+    fi
+}
+
+# Start the watchdog function in the background
+watchdog &
+wd_pid=$!
+
+# Make sure watchdog is stopped when the script exits
+trap "trap - SIGTERM && stop_watchdog ${wd_pid}" SIGINT SIGTERM EXIT ERR
+
+
+# Start the container
+echo "Launching ${APP_NAME} using container image ${IMAGE_NAME}:${TAG}"
+docker container run \
+        --rm \
+        --name ${APP_NAME} \
+        --privileged \
+        --pid=host \
+        --init \
+        "${ARG[@]}" \
+        ${IMAGE_NAME}:${TAG} \
+        "${CMD[@]}"

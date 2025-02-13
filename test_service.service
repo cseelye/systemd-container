@@ -1,0 +1,15 @@
+[Unit]
+Description=Test Service
+# After=docker.service
+# Requires=docker.service
+StartLimitBurst=3
+StartLimitIntervalSec=300
+
+[Service]
+Type=exec
+TimeoutStartSec=120s
+ExecStart=/usr/local/bin/run-test_service /etc/myservices/test_service
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

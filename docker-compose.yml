@@ -1,0 +1,16 @@
+# docker container run --rm -it --tmpfs /run --tmpfs /run/lock --volume /var/run/docker.sock:/var/run/docker.sock --cgroupns host --volume /sys/fs/cgroup/service_tester.scope:/sys/fs/cgroup:rw --name service_tester service_tester
+services:
+  service_test:
+    pull_policy: never
+    build: .
+    image: service_tester
+    container_name: service_tester
+    tty: true
+    stop_signal: SIGRTMIN+3
+    cgroup: host
+    tmpfs:
+    - /run
+    - /run/lock
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    - /sys/fs/cgroup/service_tester.scope:/sys/fs/cgroup

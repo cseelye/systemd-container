@@ -1,0 +1,17 @@
+APP_NAME=test_service
+IMAGE_NAME=python
+TAG=3.12
+
+ARG=(
+    -p 9400:9400
+    --cap-add SYS_ADMIN
+    --health-cmd='wget --spider -q http://localhost:9400/metrics || exit 1'
+    --health-interval=60s
+    --health-timeout=10s
+    --health-retries=3
+)
+CMD=(
+    bash
+    -c
+    'touch /metrics && python3 -m http.server 9400'
+)
